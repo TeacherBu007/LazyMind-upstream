@@ -24,6 +24,8 @@
 
 每个业务用例最多 45 分钟，每个托管 Job 最多 6 小时。实际运行会消耗 GitHub Actions 配额以及外部模型的用量；不使用付费的大型 Runner。
 
+手动运行和启用的定时运行会先执行脚本单元测试。涉及本套 CI 的 PR 在同一工作流下只运行这项检查，无需账号、模型 Key 或本机服务。
+
 ## 安装与隔离
 
 - Go 1.25.14、Node 22.22.2、pnpm 10.0.0、uv 0.12.10；Python 服务由 LazyMind 源码运行时管理器按其配置安装。
@@ -48,16 +50,12 @@
 
 ## 分层排障
 
-`Agent E2E Platform Checks` 可分别选择 `tests`（进程、锁、传输等基础测试）、`runtime`（从源码启动 LazyMind 并读取三个真实工作流）、`agents`（安装三个官方 Agent 并核验版本）、`all`。
-
-基础测试或安装成功不等于业务场景成功。迁移验收以两个系统上实际业务报告和生成文件为准。原有 `agent-e2e.yml` 保留为 macOS self-hosted 的本机排障入口。
+本机调试可按[本地运行说明](agent_e2e.md)使用命令行。托管任务的业务结果以各平台实际生成的报告和文件为准。
 
 ## 定时 main 快照测试
 
-独立入口 `.github/workflows/agent-e2e-scheduled.yml` 每周二、周四北京时间 22:00（UTC `0 14 * * 2,4`）运行；GitHub 排队可能延迟。工作流必须存在于仓库默认分支。配置上面的模型 Secrets 后，将仓库 Actions Variable `LAZYMIND_AGENT_E2E_SCHEDULE_ENABLED` 设置为 `true` 启用；不设置时不会创建 tag 或调用模型，方便 fork 和上游独立决定启用时间。手动运行这个入口也受同一开关约束。
+同一托管工作流在每周二、周四北京时间 22:00（UTC `0 14 * * 2,4`）触发。GitHub 排队可能延迟，且工作流必须存在于默认分支。配置模型 Secrets 后，将仓库 Actions Variable `LAZYMIND_AGENT_E2E_SCHEDULE_ENABLED` 设置为 `true` 启用定时运行。各仓库独立设置该变量，普通手动运行可直接选用例。
 
-调度入口读取 main 最新提交，创建 `ci-日期-时间-run_id-attempt` 轻量 tag，再以相同的不可变 SHA 调用 hosted E2E。每个平台按 Agent 分组执行 PPT、论文、普通生图场景，共 18 项。固定测试的审核由测试控制器处理，失败不会自动重试生图。整个过程从源码构建、启动服务，不生成安装包、不创建 Release。
+定时任务读取 main 最新提交，创建 `ci-日期-时间-run_id-attempt` 轻量 tag，再使用同一个 SHA 运行脚本检查和 hosted E2E。每个平台按 Agent 分组执行 PPT、论文、普通生图场景，共 18 项。固定测试的审核由测试控制器处理，失败不会自动重试生图。整个过程从源码构建、启动服务，不生成安装包、不创建 Release。
 
-创建 tag 的 job 只使用仓库 GITHUB_TOKEN；测试 job 只有 contents:read。`ci-*` 不匹配现有 `v*` 发布规则，且 GITHUB_TOKEN 的 push 不触发其他工作流；后续 E2E 使用 workflow_call 显式调用，不依赖 tag push。并发组和产物名称独立，不取消其他 CI。原 ci.yml、安装包、Docker 和发布工作流保持不变。
-
-`.github/workflows/agent-e2e-checks.yml` 仅在本套 CI 的相关文件发生 PR 变更时运行控制器单元测试，不需要账号、模型 Key 或本机服务。平台检查与 self-hosted 入口仍保留为手动排障入口。
+只有定时任务的打 tag 步骤使用可写的仓库 GITHUB_TOKEN，测试任务只有 `contents: read` 权限。E2E 直接依赖快照和脚本检查，`ci-*` tag 与现有 `v*` 发布规则分开，GITHUB_TOKEN 的 tag push 不触发其他工作流。
